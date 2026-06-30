@@ -395,8 +395,10 @@ function halfRingMesh(z,side){                         // split-ring: half annul
   const mesh=new THREE.Mesh(g,m); mesh.userData.ei=0.45*f;
   mesh.castShadow=true; mesh.receiveShadow=true; return mesh;
 }
-function topLock(){ const capTop=P.headZ+P.T;
-  return { capTop, PROT:16, kw:Math.max(6,P.ribTabW-4), khz:P.T+0.10, keyLen:P.T+18 }; }
+function topLock(){ const capTop=P.headZ+P.T, kw=Math.max(6,P.ribTabW-4), khz=P.T+0.10;
+  const bridge=Math.max(3, P.T);                       // retaining wood above the key
+  const PROT=Math.round((0.2 + khz + bridge)*10)/10;   // minimal: key gap + key + bridge
+  return { capTop, PROT, kw, khz, keyLen:P.T+18 }; }
 function baseLock(){ const oR=Math.max(rsOuter(0),rsOuter(P.T));
   return { plateTop:P.T, kw:Math.max(6,P.ribTabW-4), khz:P.T+0.10, keyLen:P.T+18,
            rIn:Math.max(8,P.seatIn-1), rOut:oR+1, midR:(P.seatIn+oR)/2, Rdisc:R_outer(0) }; }
