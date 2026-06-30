@@ -497,17 +497,19 @@ function ribPts(){
       const ttop=top+lockH, tgt=bottomTooth?top:ttop, n=Math.max(2,Math.round((prev-tgt)/4));
       for(let i=1;i<=n;i++){ const zz=prev+(tgt-prev)*i/n; pts.push([rsOuter(zz),zz]); }
       if(sprung && !bottomTooth){                  // sprung tooth on TOP — slit notch opens into the seat top
-        const rOt=rsOuter(top), rOr=rsOuter(top+tongueLen);
+        const rOt=rsOuter(top), rOr=rsOuter(top+tongueLen), rRel=kerf/2, rc=rOr-tongueW-kerf/2;
         pts.push([rsOuter(ttop),ttop],[rOt+lock,top],
-                 [rOt-tongueW,top],[rOr-tongueW,top+tongueLen],            // tongue inboard face (tracks the slope)
-                 [rOr-tongueW-kerf,top+tongueLen],[rOt-tongueW-kerf,top],  // slit inner wall, back down to the seat
+                 [rOt-tongueW,top],[rOr-tongueW,top+tongueLen]);           // up the tongue inboard face (tracks the slope)
+        for(let k=0;k<=4;k++){ const t=Math.PI*k/4; pts.push([rc+rRel*Math.cos(t), top+tongueLen+rRel*Math.sin(t)]); } // round the closed (root) end — stress relief
+        pts.push([rOt-tongueW-kerf,top],                                   // down the slit inner wall to the seat
                  [ri,top],[ri,bot],[rsOuter(bot),bot]);
         prev=bot;
       } else if(sprung && bottomTooth){            // sprung tooth on BOTTOM — slit notch opens into the seat bottom
-        const rOb=rsOuter(bot), rOr=rsOuter(bot-tongueLen);
+        const rOb=rsOuter(bot), rOr=rsOuter(bot-tongueLen), rRel=kerf/2, rc=rOr-tongueW-kerf/2;
         pts.push([rsOuter(top),top],[ri,top],[ri,bot],
-                 [rOb-tongueW-kerf,bot],[rOr-tongueW-kerf,bot-tongueLen],  // slit inner wall, down
-                 [rOr-tongueW,bot-tongueLen],[rOb-tongueW,bot],            // tongue inboard face, back up
+                 [rOb-tongueW-kerf,bot],[rOr-tongueW-kerf,bot-tongueLen]); // down the slit inner wall
+        for(let k=0;k<=4;k++){ const t=Math.PI*(4-k)/4; pts.push([rc+rRel*Math.cos(t), bot-tongueLen-rRel*Math.sin(t)]); } // round the closed (root) end — stress relief
+        pts.push([rOb-tongueW,bot],                                        // up the tongue inboard face
                  [rOb+lock,bot],[rsOuter(bot-lockH),bot-lockH]);
         prev=bot-lockH;
       } else {                                     // rigid tooth on top (default, and tight-gap fallback)
@@ -1032,7 +1034,7 @@ function buildInstructions(){
     engrsign:"Cap + engraved sign panel"}[P.topMode]||P.topMode;
   const ASM={
     weave:{name:"Woven full rings",add:"Weave each ring onto the three ribs at its own height: line up its three slots with the ribs and ease it down level until it sits in all three seats."},
-    droplock:{name:"Drop-lock (snap-in full rings)"+(P.snapSprung?" \u2014 sprung tooth":""),add:"Press each ring onto the three ribs at its seat until it clicks past the snap tooth. Tip the ring to hook two ribs first, then bring it flat onto the third and press."+(P.snapSprung?" The tooth rides on a slit-sprung tongue, so it flexes aside and springs back \u2014 a lighter, cleaner click than a rigid tooth, with no need to flex the whole ring. Above the belly the tooth catches each ring's top edge; below the belly it catches the bottom, so seat the widest rings first and work outward toward both ends.":"")},
+    droplock:{name:"Drop-lock (snap-in full rings)"+(P.snapSprung?" \u2014 sprung tooth":""),add:"Press each ring onto the three ribs at its seat until it clicks past the snap tooth. Tip the ring to hook two ribs first, then bring it flat onto the third and press."+(P.snapSprung?" The tooth rides on a slit-sprung tongue, so it flexes aside and springs back \u2014 a lighter, cleaner click than a rigid tooth, with no need to flex the whole ring (each tongue has a rounded relief at its root to resist splitting). Above the belly the tooth catches each ring's top edge; below the belly it catches the bottom, so seat the widest rings first and work outward toward both ends.":"")},
     split:{name:"Split rings (two half-rings each)",add:"Each ring is two half-rings. Set both halves around the ribs so their ends meet at the rib lines; the ribs and the end clamps hold them together."},
     open:{name:"Open-slot ribs (flared lead-in)",add:"The rib slots are flared so rings start on easily. Seat each ring at its height and push it home."},
     bayonet:{name:"Bayonet twist-lock",add:"Lower each ring over the rib lugs through the deep entry pockets, then twist it about "+P.bayTwist+"\u00B0 until it locks onto the shallow foot."}
