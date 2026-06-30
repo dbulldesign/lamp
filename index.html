@@ -150,6 +150,22 @@ input[type=range]::-moz-range-thumb{ width:14px;height:14px;border-radius:50%; b
     </div>
 
     <div class="group">
+      <h2>Diffuser disk</h2>
+      <div class="ctrl"><div class="row"><label>Drop-in disk over the puck</label></div>
+        <div class="seg" id="seg_diff"><button data-diff="0">Off</button><button data-diff="1">On</button></div></div>
+      <div class="ctrl"><div class="row"><label>Opening Ø</label><span class="vwrap"><input class="vin" id="v_DOPEN" type="text" inputmode="decimal"><span class="vu" id="u_v_DOPEN"></span></span></div>
+        <input type="range" id="s_DOPEN" min="20" max="90" step="1"></div>
+      <div class="ctrl"><div class="row"><label>Rib fit</label></div>
+        <div class="seg" id="seg_diffnotch"><button data-dn="1">Notched</button><button data-dn="0">No notch</button></div></div>
+      <div class="ctrl"><div class="row"><label>Opening style</label></div>
+        <div class="seg" id="seg_diffhex"><button data-dh="0">Open</button><button data-dh="1">Hex grid</button></div></div>
+      <div class="ctrl"><div class="row"><label>Hex cell (across flats)</label><span class="vwrap"><input class="vin" id="v_HCELL" type="text" inputmode="decimal"><span class="vu" id="u_v_HCELL"></span></span></div>
+        <input type="range" id="s_HCELL" min="3" max="12" step="0.5"></div>
+      <div class="ctrl"><div class="row"><label>Hex wall</label><span class="vwrap"><input class="vin" id="v_HWALL" type="text" inputmode="decimal"><span class="vu" id="u_v_HWALL"></span></span></div>
+        <input type="range" id="s_HWALL" min="0.6" max="2.5" step="0.1"></div>
+    </div>
+
+    <div class="group">
       <h2>Top</h2>
       <div class="seg grid" id="seg_top">
         <button data-top="none">Open</button>
@@ -267,7 +283,7 @@ const P = {
   N:22, ringW:14, T:3.18,            // rings + material
   D:6, ribW:18, apertureR:40, zShroud:70, zBot:8,
   puckD:70, puckH:24, lift:15, ledModel:"custom",                 // LED puck dimensions + lift off table
-  ribTabW:14, slotFit:-0.1, numberRings:true, assembly:"weave", snapGrip:55, snapSprung:false, bayTwist:16, bayLugD:3, wedgeTop:true, wedgeBase:true,
+  ribTabW:14, slotFit:-0.1, numberRings:true, assembly:"weave", snapGrip:55, snapSprung:false, diffuser:false, diffOpen:60, diffHex:false, diffNotch:true, hexCell:5.2, hexWall:1.1, bayTwist:16, bayLugD:3, wedgeTop:true, wedgeBase:true,
   topMode:"sign", number:"18", font:"classic", signStyle:"classic", engravingDepth:0.5, signShape:"arch",
   glow:55, rotate:false, unit:"mm",
   RIB_ANGLES:[0,120,240]
@@ -792,6 +808,27 @@ function topMeshes(){
   return out;
 }
 let puckMesh, signGlowMat=null;
+function diskMesh(){
+  const {zDisk,rOut,rNotchIn,openR}=diskRadii(), w=P.slotW/2+0.15;
+  const sh=new THREE.Shape();
+  if(P.diffNotch){
+    const C=P.RIB_ANGLES.map(d=>d*Math.PI/180).sort((a,b)=>a-b);
+    const hw=Math.asin(Math.min(0.99,w/rOut)), rot=(ang,rad,off)=>[rad*Math.cos(ang)-off*Math.sin(ang), rad*Math.sin(ang)+off*Math.cos(ang)];
+    let first=true;
+    for(let i=0;i<C.length;i++){ const c=C[i];
+      const a0=(i>0?C[i-1]:C[C.length-1]-2*Math.PI)+hw, a1=c-hw, steps=Math.max(2,Math.round((a1-a0)*rOut/3));
+      for(let k=0;k<=steps;k++){ const aa=a0+(a1-a0)*k/steps, x=rOut*Math.cos(aa), y=rOut*Math.sin(aa); if(first){sh.moveTo(x,y);first=false;} else sh.lineTo(x,y); }
+      let p; p=rot(c,rOut,-w);sh.lineTo(p[0],p[1]); p=rot(c,rNotchIn,-w);sh.lineTo(p[0],p[1]); p=rot(c,rNotchIn,+w);sh.lineTo(p[0],p[1]); p=rot(c,rOut,+w);sh.lineTo(p[0],p[1]);
+    }
+    sh.closePath();
+  } else { sh.absarc(0,0,rOut,0,Math.PI*2,false); }
+  if(P.diffHex){ for(const h of hexCells(openR)){ const hp=new THREE.Path(); hp.moveTo(h[0][0],h[0][1]); for(let k=1;k<6;k++)hp.lineTo(h[k][0],h[k][1]); hp.closePath(); sh.holes.push(hp); } }
+  else { const hp=new THREE.Path(); hp.absarc(0,0,openR,0,Math.PI*2,true); sh.holes.push(hp); }
+  const g=new THREE.ExtrudeGeometry(sh,{depth:P.T,bevelEnabled:false,curveSegments:48});
+  g.rotateX(-Math.PI/2); g.translate(0, zDisk+P.T/2, 0);
+  const m=woodMat.clone(); m.castShadow=true; m.receiveShadow=true;
+  const mesh=new THREE.Mesh(g,m); mesh.castShadow=true; return mesh;
+}
 function rebuild(){
   derive();
   for(let i=lamp.children.length-1;i>=0;i--){ const o=lamp.children[i]; lamp.remove(o); if(o.geometry)o.geometry.dispose(); }
@@ -806,6 +843,7 @@ function rebuild(){
   pg.translate(0,P.lift+P.puckH/2,0);
   puckMesh=new THREE.Mesh(pg,[puckSideMat,puckMat,puckBotMat]);   // side / top lens / dark bottom
   puckMesh.castShadow=true; lamp.add(puckMesh);
+  if(P.diffuser) lamp.add(diskMesh());
   const ph=P.lift+P.puckH;                       // lens height (top of puck)
   beam.position.set(0,ph+1,0); beamTarget.position.set(0,P.H*1.2,0);
   beam.intensity=GG()*2.6; beam.distance=P.H*2.6;
@@ -925,6 +963,43 @@ function ribSVG(ox,oy){
   for(const h of ribHoles()) out.push(poly(h.map(map)));
   return out;
 }
+function diskRadii(){                            // floating diffuser disk that rests on the puck top
+  const zDisk=P.lift+P.puckH;
+  const rBore=r_inner(zDisk)-0.8;
+  const rOut = P.diffNotch ? rBore : Math.min(rBore, P.wallR-0.4);  // notched reaches the ring wall; plain nestles between the ribs
+  const rNotchIn=Math.min(P.wallR-0.5, rOut-2);                     // rib-notch depth (clears the puck cradle)
+  const openCap = P.diffNotch ? (rNotchIn-3) : (rOut-3);
+  const openR=Math.max(8, Math.min(P.diffOpen/2, P.wallR-4, openCap, rOut-3)); // keep a connecting ring + an annulus that rests on the puck
+  return {zDisk,rOut,rNotchIn,openR};
+}
+function hexCells(openR){                         // honeycomb of hex holes filling the opening (pointy-top, uniform walls)
+  const ftf=Math.max(2.5,P.hexCell), wall=Math.max(0.6,P.hexWall), hr=ftf/Math.sqrt(3), d=ftf+wall, cells=[]; // ftf = cell across flats
+  const a1=[d,0], a2=[d/2,d*Math.sqrt(3)/2], lim=openR-hr-0.4, R=Math.ceil(openR/d)+2;
+  for(let i=-R;i<=R;i++) for(let j=-R;j<=R;j++){
+    const ccx=i*a1[0]+j*a2[0], ccy=i*a1[1]+j*a2[1];
+    if(ccx*ccx+ccy*ccy>lim*lim) continue;
+    const h=[]; for(let k=0;k<6;k++){ const t=(30+60*k)*Math.PI/180; h.push([ccx+hr*Math.cos(t), ccy+hr*Math.sin(t)]); }
+    cells.push(h);
+  }
+  return cells;
+}
+function diskSVG(cx,cy){
+  const {rOut,rNotchIn,openR}=diskRadii(), out=[], w=P.slotW/2+0.15;
+  if(P.diffNotch){
+    const C=P.RIB_ANGLES.map(d=>d*Math.PI/180).sort((a,b)=>a-b), pts=[];
+    const hw=Math.asin(Math.min(0.99,w/rOut));
+    const rot=(ang,rad,off)=>[cx+rad*Math.cos(ang)-off*Math.sin(ang), cy-(rad*Math.sin(ang)+off*Math.cos(ang))];
+    for(let i=0;i<C.length;i++){ const c=C[i];
+      const a0=(i>0?C[i-1]:C[C.length-1]-2*Math.PI)+hw, a1=c-hw, steps=Math.max(2,Math.round((a1-a0)*rOut/3));
+      for(let k=0;k<=steps;k++){ const aa=a0+(a1-a0)*k/steps; pts.push([cx+rOut*Math.cos(aa), cy-rOut*Math.sin(aa)]); }
+      pts.push(rot(c,rOut,-w),rot(c,rNotchIn,-w),rot(c,rNotchIn,+w),rot(c,rOut,+w));   // open rib notch
+    }
+    out.push(poly(pts));
+  } else { out.push(poly(circlePts(cx,cy,rOut))); }                                   // plain disk, nestles between the ribs
+  if(P.diffHex){ for(const h of hexCells(openR)) out.push(poly(h.map(([x,y])=>[cx+x,cy-y]))); }
+  else out.push(poly(circlePts(cx,cy,openR)));
+  return out;
+}
 function basePlateSVG(cx,cy){  // bottom plate: disc + 3 rib slots
   const B=baseLock(), out=[poly(circlePts(cx,cy,B.Rdisc))];
   for(const ang of P.RIB_ANGLES){ const a=ang*Math.PI/180,u=[Math.cos(a),Math.sin(a)],v=[-Math.sin(a),Math.cos(a)],w=P.slotW/2;
@@ -1001,6 +1076,7 @@ function buildSVG(){
   else if(P.topMode==="cutout"){ const [cx,cy]=xy(ci++); parts.push(...capSVG(cx,cy,{hole:false,panel:false,cut:true})); }
   else if(P.topMode==="engravedtop"){ const [cx,cy]=xy(ci++); parts.push(...capSVG(cx,cy,{hole:false,panel:false,cut:false,eng:true})); }
   if(P.wedgeBase){ const [cx,cy]=xy(ci++); parts.push(...basePlateSVG(cx,cy)); }
+  if(P.diffuser){ const [cx,cy]=xy(ci++); parts.push(...diskSVG(cx,cy)); }
   const ncell=ci, rows=Math.ceil(ncell/cols), rx0=cols*cell+20, pitch=Rmax+30;
   for(let k=0;k<3;k++) parts.push(...ribSVG(rx0+k*pitch,10));
   let kx=rx0+3*pitch+30, keyW=0;
@@ -1085,6 +1161,7 @@ function buildInstructions(){
     m+=S("Finish the top")+"This design has an open top, so the top ring is the top. (Add a top and **Lock top** in the app if you want a wedge-locked cap.)\n\n";
   }
   m+=S("Final check")+(baseLocked?"Re-tap the base wedges \u2014 they often loosen once the stack is compressed. ":"")+"Stand it up and power the puck.\n\n";
+  if(P.diffuser){ const d=diskRadii(); m+=S("Drop in the diffuser disk")+"After the rings up to the puck top are on (and before you close the rings above it), "+(P.diffNotch?"lower the diffuser disk down the three ribs (its notches thread over them) so it rests on top of the LED puck":"drop the plain diffuser disk straight down between the ribs so it rests on top of the LED puck")+" \u2014 it floats there, no fixing needed. "+(P.diffHex?"The hex-grid port throws light up through the honeycomb while the cell walls hide the bare LED from side view.":"The open "+(2*d.openR).toFixed(0)+" mm port lets the beam up while the disk hides the puck rim and side glare.")+"\n\n"; }
   m+="## Troubleshooting\n";
   m+="- **Ring too tight:** sand the slot cheeks on the ring, or loosen the joint-fit slider and re-cut that ring.\n";
   m+=drop?"- **Snap too weak or too stiff:** use the *Snap grip* slider and re-cut \u2014 turn it up for a firmer click, down for an easier push-on. (Joint-fit tunes how tight the ring sits on the rib; sandpaper only eases a slot that came out physically too tight.)\n":"- **Ring loose:** tighten the joint-fit slider and re-cut, or a dot of glue at one rib.\n";
@@ -1112,6 +1189,9 @@ function syncLabels(){
   setVal("v_T",D(P.T,2,3),U+tTag);
   setVal("v_FIT",P.slotFit.toFixed(2),"mm");
   setVal("v_SNAP",Math.round(P.snapGrip),"%"); sset("s_SNAP",P.snapGrip);
+  setVal("v_DOPEN",Math.round(P.diffOpen),"mm"); sset("s_DOPEN",P.diffOpen);
+  setVal("v_HCELL",P.hexCell.toFixed(1),"mm"); sset("s_HCELL",P.hexCell);
+  setVal("v_HWALL",P.hexWall.toFixed(1),"mm"); sset("s_HWALL",P.hexWall);
   setVal("v_G",Math.round(P.glow),"%");
   setVal("v_PD",D(P.puckD,1),U); setVal("v_PHt",D(P.puckH,1),U); setVal("v_LF",D(P.lift),U);
   const L=(v,d)=> IN ? (v/25.4).toFixed(2)+'"' : Math.round(v)+" mm";
@@ -1174,7 +1254,7 @@ const FIELDS={v_H:["H","s_H",true,[60,1200]],v_W:["dia","s_W",true,[80,1200]],v_
   v_N:["N","s_N",false,[4,200]],v_RW:["ringW","s_RW",true,[4,80]],v_T:["T","s_T",true,[1,12]],
   v_FIT:["slotFit","s_FIT",false,[-0.6,0.3]],
   v_PD:["puckD","s_PD",true,[20,300]],v_PHt:["puckH","s_PHt",true,[5,120]],v_LF:["lift","s_LF",true,[0,200]],
-  v_G:["glow","s_G",false,[0,100]], v_SNAP:["snapGrip","s_SNAP",false,[0,100]]};
+  v_G:["glow","s_G",false,[0,100]], v_SNAP:["snapGrip","s_SNAP",false,[0,100]], v_DOPEN:["diffOpen","s_DOPEN",false,[20,90]], v_HCELL:["hexCell","s_HCELL",false,[3,12]], v_HWALL:["hexWall","s_HWALL",false,[0.6,2.5]]};
 for(const id in FIELDS){
   const [key,sl,isDim,range]=FIELDS[id]; const el=document.getElementById(id); if(!el) continue;
   el.addEventListener("keydown",e=>{ if(e.key==="Enter") el.blur(); });
@@ -1199,7 +1279,7 @@ function bind(slider,key,after){ const el=document.getElementById(slider);
 bind("s_H","H",()=>{ if(PROFILES[P.profile]) P.dia=Math.min(240,Math.max(130,P.H/PROFILES[P.profile].hr)); rebuild(); });
 bind("s_W","dia");
 bind("s_TP","taper",()=>{ if(P.profile!=="custom"){ setProfile("custom"); } else { rebuild(); } });
-bind("s_N","N"); bind("s_RW","ringW"); bind("s_T","T"); bind("s_FIT","slotFit"); bind("s_SNAP","snapGrip");
+bind("s_N","N"); bind("s_RW","ringW"); bind("s_T","T"); bind("s_FIT","slotFit"); bind("s_SNAP","snapGrip"); bind("s_DOPEN","diffOpen"); bind("s_HCELL","hexCell"); bind("s_HWALL","hexWall");
 const asmBtns=[...document.querySelectorAll("#seg_asm button")];
 function setAssembly(a){ P.assembly=a; asmBtns.forEach(b=>b.classList.toggle("on",b.dataset.asm===a)); rebuild(); }
 asmBtns.forEach(b=>b.addEventListener("click",()=>setAssembly(b.dataset.asm)));
@@ -1210,6 +1290,16 @@ const sprungBtns=[...document.querySelectorAll("#seg_sprung button")];
 function paintSprung(){ sprungBtns.forEach(b=>b.classList.toggle("on", (b.dataset.spr==="1")===!!P.snapSprung)); }
 sprungBtns.forEach(b=>b.addEventListener("click",()=>{ P.snapSprung=(b.dataset.spr==="1"); paintSprung(); rebuild(); }));
 paintSprung();
+const diffBtns=[...document.querySelectorAll("#seg_diff button")];
+function paintDiff(){ diffBtns.forEach(b=>b.classList.toggle("on",(b.dataset.diff==="1")===!!P.diffuser)); }
+diffBtns.forEach(b=>b.addEventListener("click",()=>{ P.diffuser=(b.dataset.diff==="1"); paintDiff(); rebuild(); }));
+const diffHexBtns=[...document.querySelectorAll("#seg_diffhex button")];
+function paintDiffHex(){ diffHexBtns.forEach(b=>b.classList.toggle("on",(b.dataset.dh==="1")===!!P.diffHex)); }
+diffHexBtns.forEach(b=>b.addEventListener("click",()=>{ P.diffHex=(b.dataset.dh==="1"); paintDiffHex(); rebuild(); }));
+const diffNotchBtns=[...document.querySelectorAll("#seg_diffnotch button")];
+function paintDiffNotch(){ diffNotchBtns.forEach(b=>b.classList.toggle("on",(b.dataset.dn==="1")===!!P.diffNotch)); }
+diffNotchBtns.forEach(b=>b.addEventListener("click",()=>{ P.diffNotch=(b.dataset.dn==="1"); paintDiffNotch(); rebuild(); }));
+paintDiff(); paintDiffHex(); paintDiffNotch();
 paintLocks();
 bind("s_PD","puckD",()=>{ if(P.ledModel!=="custom") setLed("custom"); else rebuild(); });
 bind("s_PHt","puckH",()=>{ if(P.ledModel!=="custom") setLed("custom"); else rebuild(); });
@@ -1252,7 +1342,7 @@ document.getElementById("ex_csv").addEventListener("click",()=>download(`barrel_
 document.getElementById("ex_txt").addEventListener("click",()=>download(`barrel_${P.N}rings_assembly.md`,buildInstructions(),"text/markdown"));
 
 /* ========================= PRESETS ========================= */
-const USER_KEYS=["H","dia","taper","profile","N","ringW","T","slotFit","numberRings","assembly","snapGrip","snapSprung","wedgeTop","wedgeBase","puckD","puckH","lift","ledModel","topMode","number","font","glow","rotate","unit"];
+const USER_KEYS=["H","dia","taper","profile","N","ringW","T","slotFit","numberRings","assembly","snapGrip","snapSprung","diffuser","diffOpen","diffHex","diffNotch","hexCell","hexWall","wedgeTop","wedgeBase","puckD","puckH","lift","ledModel","topMode","number","font","glow","rotate","unit"];
 const DEFAULTS=(()=>{const o={};for(const k of USER_KEYS)o[k]=P[k];return JSON.parse(JSON.stringify(o));})();
 const PKEY="cooperLampPresets";
 let slots=[null,null,null,null,null];
@@ -1277,7 +1367,7 @@ function applyPreset(o){
   unitBtns.forEach(b=>b.classList.toggle("on",b.dataset.u===(P.unit||"mm")));
   profBtns.forEach(b=>b.classList.toggle("on",b.dataset.prof===(P.profile||"custom")));
   asmBtns.forEach(b=>b.classList.toggle("on",b.dataset.asm===(P.assembly||"weave")));
-  paintLocks(); paintSprung();
+  paintLocks(); paintSprung(); paintDiff(); paintDiffHex(); paintDiffNotch();
   ledBtns.forEach(b=>b.classList.toggle("on",b.dataset.led===(P.ledModel||"custom")));
   setTop(P.topMode);                                   // updates seg UI + rebuild
   syncLabels();
