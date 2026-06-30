@@ -186,7 +186,7 @@ input[type=range]::-moz-range-thumb{ width:14px;height:14px;border-radius:50%; b
       <div class="ctrl"><div class="row"><label>Puck height</label><span class="vwrap"><input class="vin" id="v_PHt" type="text" inputmode="decimal"><span class="vu" id="u_v_PHt"></span></span></div>
         <input type="range" id="s_PHt" min="10" max="45" step="0.1"></div>
       <div class="ctrl"><div class="row"><label>Lift off table</label><span class="vwrap"><input class="vin" id="v_LF" type="text" inputmode="decimal"><span class="vu" id="u_v_LF"></span></span></div>
-        <input type="range" id="s_LF" min="5" max="40" step="1"></div>
+        <input type="range" id="s_LF" min="1" max="40" step="1"></div>
     </div>
 
     <div class="group">
@@ -206,6 +206,7 @@ input[type=range]::-moz-range-thumb{ width:14px;height:14px;border-radius:50%; b
         <div class="seg five" id="loadRow">
           <button data-slot="0">1</button><button data-slot="1">2</button><button data-slot="2">3</button><button data-slot="3">4</button><button data-slot="4">5</button>
         </div></div>
+      <div class="export"><button class="ghost" id="myBtn">★ Recall my barrel (Burgundy 7.87&Prime;)</button></div>
       <div class="export"><button class="ghost" id="resetBtn">Restore defaults</button></div>
     </div>
 
@@ -262,7 +263,10 @@ function derive(){
   P.Rbilge = P.dia/2;
   P.Rhead  = P.Rbilge*P.taper;
   P.ringW  = Math.min(P.ringW, P.Rhead-16);     // keep an open core
+  P.D      = Math.max(6, Math.min(P.ringW*0.5, P.ringW-4, 18));  // lap depth tracks ring width
+  P.ribW   = Math.max(16, P.D+6);               // rib body always contains the lap
   P.slotW  = P.T + P.slotFit;
+  if(P.wedgeBase) P.lift = Math.max(P.lift, Math.ceil(2*P.T+1)); // puck rides above the base pins for a wider, stronger tenon
   P.headZ  = P.H - 7;
   const minPitch=P.slotW+3, maxN=Math.max(4,Math.floor(P.headZ/minPitch)-1);
   if(P.N>maxN) P.N=maxN;
@@ -399,23 +403,29 @@ function topLock(){ const capTop=P.headZ+P.T, kw=Math.max(6,P.ribTabW-4), khz=P.
   const bridge=Math.max(3, P.T);                       // retaining wood above the key
   const PROT=Math.round((0.2 + khz + bridge)*10)/10;   // minimal: key gap + key + bridge
   return { capTop, PROT, kw, khz, keyLen:P.T+18 }; }
-function baseLock(){ const oR=Math.max(rsOuter(0),rsOuter(P.T));
-  return { plateTop:P.T, kw:Math.max(6,P.ribTabW-4), khz:P.T+0.10, keyLen:P.T+18,
-           rIn:Math.max(8,P.seatIn-1), rOut:oR+1, midR:(P.seatIn+oR)/2, Rdisc:R_outer(0) }; }
+function baseLock(){ const rs0=rsOuter(0);
+  const tabIn=Math.max(P.seatIn+1, rs0-22), tabOut=rs0;        // wider tenon (puck raised to clear)
+  const kw=Math.max(6, Math.min(9,(tabOut-tabIn)/2-2.5));      // two pins, as large as fit
+  const pinA=tabIn+kw/2+1.2, pinB=tabOut-kw/2-1.2;             // inner + outer pin
+  return { plateTop:P.T, kw, khz:P.T+0.10, keyLen:P.T+18,
+           tabIn, tabOut, pinA, pinB, rIn:tabIn, rOut:tabOut, midR:(tabIn+tabOut)/2, Rdisc:R_outer(0) }; }
 function ribHoles(){          // wedge mortises: top tenon (above cap) and base (above base plate)
   const out=[];
   if(P.topMode!=="none" && P.wedgeTop){ const L=topLock(), z0=L.capTop+0.2, z1=z0+L.khz, r0=P.midR-L.kw/2, r1=P.midR+L.kw/2;
     out.push([[r0,z0],[r1,z0],[r1,z1],[r0,z1]]); }
-  if(P.wedgeBase){ const B=baseLock(), z0=B.plateTop+0.05, z1=z0+B.khz, r0=B.midR-B.kw/2, r1=B.midR+B.kw/2;
-    out.push([[r0,z0],[r1,z0],[r1,z1],[r0,z1]]); }
+  if(P.wedgeBase){ const B=baseLock(), z0=B.plateTop+0.05, z1=z0+B.khz;
+    for(const pr of [B.pinA,B.pinB]){ const r0=pr-B.kw/2, r1=pr+B.kw/2; out.push([[r0,z0],[r1,z0],[r1,z1],[r0,z1]]); } }
   return out;
 }
 function ribPts(){
   const Z=P.Z, headZ=P.headZ, ribW=P.ribW, slotW=P.slotW, T=P.T;
   const seatTop=P.lift+P.capH;
-  const pts=[[P.seatIn,0],[P.seatIn,P.lift],      // foot rises to the seat
-             [P.wallR,P.lift],                     // horizontal seat (wait: ledge runs outward)
-             [P.wallR,seatTop]];                   // capture wall up the puck side
+  const B=P.wedgeBase?baseLock():null;
+  const pts=[];
+  if(B){ pts.push([B.tabIn,0],[B.tabIn,T],[P.seatIn,T],[P.seatIn,P.lift]); }  // base tenon + relief; seat rests on plate
+  else { pts.push([P.seatIn,0],[P.seatIn,P.lift]); }
+  pts.push([P.wallR,P.lift]);                      // seat ledge (runs outward)
+  pts.push([P.wallR,seatTop]);                     // capture wall up the puck side
   const zramp=Math.max(Math.min(58,0.35*P.H), seatTop+6);
   const nin=Math.max(2,Math.round((headZ-zramp)/4));
   for(let i=0;i<nin;i++){ const zz=zramp+(headZ-zramp)*i/(nin-1); pts.push([rsOuter(zz)-ribW,zz]); }
@@ -439,12 +449,17 @@ function ribPts(){
   }
   const n2=Math.max(2,Math.round(prev/4));
   for(let i=1;i<=n2;i++){ const zz=prev+(0-prev)*i/n2; pts.push([rsOuter(zz),zz]); }
-  pts.push([P.seatIn,0]);
+  if(B) pts.push([B.tabIn,0]);          // close along base-tenon bottom (descent ended at tabOut)
+  else  pts.push([P.seatIn,0]);
   return pts;
 }
-function keyMesh(angleDeg, zc, rad){
-  const L=topLock(), a=angleDeg*Math.PI/180;
-  const g=new THREE.BoxGeometry(L.kw, P.T, L.keyLen);
+function keyMesh(angleDeg, zc, rad, kw){
+  const a=angleDeg*Math.PI/180, ko=keyOutline(kw), p=ko.pts;
+  const sh=new THREE.Shape(); sh.moveTo(p[0][0],p[0][1]);
+  for(let i=1;i<p.length;i++) sh.lineTo(p[i][0],p[i][1]); sh.closePath();
+  const g=new THREE.ExtrudeGeometry(sh,{depth:P.T,bevelEnabled:false,curveSegments:1});
+  g.translate(-(ko.len-ko.hL)/2, 0, -P.T/2);   // centre length + thickness
+  g.rotateX(-Math.PI/2); g.rotateY(-Math.PI/2);// length->tangential, width->radial, thickness->vertical
   const m=new THREE.Mesh(g, ribMat.clone());
   m.position.set(rad*Math.cos(a), zc, -rad*Math.sin(a));
   m.rotation.y=a; m.castShadow=true; m.receiveShadow=true; return m;
@@ -696,8 +711,9 @@ function rebuild(){
   if(P.assembly==="split"){ for(const z of P.Z){ lamp.add(halfRingMesh(z,0)); lamp.add(halfRingMesh(z,1)); } }
   else { for(const z of P.Z) lamp.add(ringMesh(z)); }
   for(const a of P.RIB_ANGLES) lamp.add(ribMesh(a));
-  if(P.topMode!=="none" && P.wedgeTop){ const L=topLock(); for(const a of P.RIB_ANGLES) lamp.add(keyMesh(a, L.capTop+L.khz/2+0.2, P.midR)); }
-  if(P.wedgeBase){ lamp.add(basePlateMesh()); const B=baseLock(); for(const a of P.RIB_ANGLES) lamp.add(keyMesh(a, B.plateTop+0.05+B.khz/2, B.midR)); }
+  if(P.topMode!=="none" && P.wedgeTop){ const L=topLock(); for(const a of P.RIB_ANGLES) lamp.add(keyMesh(a, L.capTop+L.khz/2+0.2, P.midR, L.kw)); }
+  if(P.wedgeBase){ lamp.add(basePlateMesh()); const B=baseLock(); const zc=B.plateTop+0.05+B.khz/2;
+    for(const a of P.RIB_ANGLES){ lamp.add(keyMesh(a, zc, B.pinA, B.kw)); lamp.add(keyMesh(a, zc, B.pinB, B.kw)); } }
   for(const m of topMeshes()) lamp.add(m);
   const pg=new THREE.CylinderGeometry(P.puckD/2-0.8,P.puckD/2-0.8,P.puckH,48);
   pg.translate(0,P.lift+P.puckH/2,0);
@@ -781,14 +797,20 @@ function halfRingSVG(cx,cy,z,side){          // split-ring half with its share o
 }
 function circlePts(cx,cy,r,n=360){ const a=[]; for(let i=0;i<n;i++){const t=i/n*Math.PI*2; a.push([cx+r*Math.cos(t),cy+r*Math.sin(t)]);} return a; }
 function ringInner(cx,cy,ri){
-  const half=Math.asin((P.slotW/2)/ri), C=P.RIB_ANGLES.map(d=>d*Math.PI/180).sort((a,b)=>a-b), pts=[];
-  for(let i=0;i<C.length;i++){ const c=C[i], lead=c-half, prev=i>0?C[i-1]+half:C[C.length-1]+half-2*Math.PI;
-    const steps=Math.max(2,Math.round((lead-prev)*ri/3));
-    for(let k=0;k<=steps;k++){ const aa=prev+(lead-prev)*k/steps; pts.push([cx+ri*Math.cos(aa),cy+ri*Math.sin(aa)]); }
-    pts.push([cx+(ri+P.D)*Math.cos(lead),cy+(ri+P.D)*Math.sin(lead)]);
-    for(let k=0;k<=5;k++){ const aa=lead+(2*half)*k/5; pts.push([cx+(ri+P.D)*Math.cos(aa),cy+(ri+P.D)*Math.sin(aa)]); }
-    pts.push([cx+ri*Math.cos(c+half),cy+ri*Math.sin(c+half)]);
-  } return poly(pts);
+  // straight, parallel-wall slots (slotW apart) so the flat rib faces seat flush — no fan slop
+  const w=P.slotW/2, D=P.D, t0=Math.sqrt(Math.max(1,ri*ri-w*w)), hw=Math.asin(Math.min(0.99,w/ri));
+  const C=P.RIB_ANGLES.map(d=>d*Math.PI/180).sort((a,b)=>a-b), pts=[];
+  const rot=(ang,rad,off)=>[cx+rad*Math.cos(ang)-off*Math.sin(ang), cy+rad*Math.sin(ang)+off*Math.cos(ang)];
+  for(let i=0;i<C.length;i++){ const c=C[i];
+    const arcStart=(i>0?C[i-1]:C[C.length-1]-2*Math.PI)+hw, arcEnd=c-hw;   // analytic angles (no atan2 wrap)
+    const steps=Math.max(2,Math.round((arcEnd-arcStart)*ri/3));
+    for(let k=0;k<=steps;k++){ const aa=arcStart+(arcEnd-arcStart)*k/steps; pts.push([cx+ri*Math.cos(aa),cy+ri*Math.sin(aa)]); }
+    pts.push(rot(c,t0,-w));          // mouth (- side)
+    pts.push(rot(c,ri+D,-w));        // bottom (- side)
+    pts.push(rot(c,ri+D,+w));        // bottom (+ side)
+    pts.push(rot(c,t0,+w));          // mouth (+ side)
+  }
+  return poly(pts);
 }
 function ribSVG(ox,oy){
   const map=([x,y])=>[ox+x, oy+(P.H+40)-y];
@@ -803,11 +825,13 @@ function basePlateSVG(cx,cy){  // bottom plate: disc + 3 rib slots
     out.push(poly(c)); }
   return out;
 }
-function keySVG(ox,oy){       // flat wedge key: shaft + stop head + eased tip
-  const L=topLock(), kw=L.kw, len=L.keyLen, hw=kw+8, hL=7;
-  const pts=[[-hL,-hw/2],[0,-hw/2],[0,-kw/2],[len-4,-kw/2],[len,-kw/2+1.3],
-             [len,kw/2-1.3],[len-4,kw/2],[0,kw/2],[0,hw/2],[-hL,hw/2]];
-  return poly(pts.map(([x,y])=>[ox+x, oy+y]));
+function keyOutline(kw){       // tapered wedge pin profile: wide shoulder -> narrow tip
+  const len=P.T+18, tip=kw-1.6, sh=kw+0.8, hw=kw+8, hL=7;
+  return { len, hL, pts:[[-hL,-hw/2],[0,-hw/2],[0,-sh/2],[len-3,-tip/2],[len,-tip/2+0.7],
+             [len,tip/2-0.7],[len-3,tip/2],[0,sh/2],[0,hw/2],[-hL,hw/2]] };
+}
+function keySVG(ox,oy,kw){
+  return poly(keyOutline(kw).pts.map(([x,y])=>[ox+x, oy+y]));
 }
 function capSVG(cx,cy,opts){
   const out=[poly(circlePts(cx,cy,P.RCAP))];
@@ -873,9 +897,11 @@ function buildSVG(){
   const ncell=ci, rows=Math.ceil(ncell/cols), rx0=cols*cell+20, pitch=Rmax+30;
   for(let k=0;k<3;k++) parts.push(...ribSVG(rx0+k*pitch,10));
   let kx=rx0+3*pitch+30, keyW=0;
-  const nkeys=((P.topMode!=="none"&&P.wedgeTop)?3:0)+(P.wedgeBase?3:0);
-  if(nkeys){ const L=topLock(); keyW=L.keyLen+L.kw+40;
-    for(let k=0;k<nkeys;k++) parts.push(keySVG(kx+12, 40+k*(L.kw+18))); }
+  const haveTop=(P.topMode!=="none"&&P.wedgeTop), haveBase=P.wedgeBase;
+  if(haveTop||haveBase){ const tL=topLock(), bL=baseLock(); keyW=tL.keyLen+tL.kw+20+44;
+    let row=0; const step=tL.kw+8+12, ny=()=>40+(row++)*step;
+    if(haveTop)  for(let k=0;k<3;k++) parts.push(keySVG(kx+12, ny(), tL.kw));
+    if(haveBase) for(let k=0;k<6;k++) parts.push(keySVG(kx+12, ny(), bL.kw)); }
   const W=rx0+3*pitch+40+keyW, Hg=Math.max(rows*cell,P.H+80);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W.toFixed(1)}mm" height="${Hg.toFixed(1)}mm" viewBox="0 0 ${W.toFixed(1)} ${Hg.toFixed(1)}">\n<rect width="${W.toFixed(1)}" height="${Hg.toFixed(1)}" fill="#fff"/>\n${parts.join("\n")}\n</svg>\n`;
 }
@@ -1075,6 +1101,10 @@ document.querySelectorAll("#loadRow button").forEach(b=>b.addEventListener("clic
   const o=slots[+b.dataset.slot]; if(o) applyPreset(o);
 }));
 document.getElementById("resetBtn").addEventListener("click",()=>applyPreset(DEFAULTS));
+const MY_SETTINGS={ profile:"burgundy", taper:PROFILES.burgundy.taper, dia:163.8, H:199.8,
+  ringW:27.94, N:15, T:3.18, ledModel:"ezvalo", puckD:PUCKS.ezvalo.d, puckH:PUCKS.ezvalo.h,
+  lift:1, topMode:"solid", assembly:"weave", wedgeTop:true, wedgeBase:true, unit:"in" };
+document.getElementById("myBtn").addEventListener("click",()=>applyPreset(MY_SETTINGS));
 readSlots(); refreshSlotUI();
 
 /* ---- resizable 3D view ---- */
