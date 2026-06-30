@@ -140,6 +140,13 @@ input[type=range]::-moz-range-thumb{ width:14px;height:14px;border-radius:50%; b
           <button data-asm="open">Open-slot ribs</button>
           <button data-asm="bayonet">Bayonet (twist-lock)</button>
         </div></div>
+      <div class="ctrl"><div class="row"><label>Snap grip · drop-lock</label><span class="vwrap"><input class="vin" id="v_SNAP" type="text" inputmode="decimal"><span class="vu" id="u_v_SNAP"></span></span></div>
+        <input type="range" id="s_SNAP" min="0" max="100" step="1"></div>
+      <div class="ctrl"><div class="row"><label>Snap tooth · drop-lock</label></div>
+        <div class="seg" id="seg_sprung">
+          <button data-spr="0">Rigid</button>
+          <button data-spr="1">Sprung (slit)</button>
+        </div></div>
     </div>
 
     <div class="group">
@@ -260,7 +267,7 @@ const P = {
   N:22, ringW:14, T:3.18,            // rings + material
   D:6, ribW:18, apertureR:40, zShroud:70, zBot:8,
   puckD:70, puckH:24, lift:15, ledModel:"custom",                 // LED puck dimensions + lift off table
-  ribTabW:14, slotFit:-0.1, numberRings:true, assembly:"weave", bayTwist:16, bayLugD:3, wedgeTop:true, wedgeBase:true,
+  ribTabW:14, slotFit:-0.1, numberRings:true, assembly:"weave", snapGrip:55, snapSprung:false, bayTwist:16, bayLugD:3, wedgeTop:true, wedgeBase:true,
   topMode:"sign", number:"18", font:"classic", signStyle:"classic", engravingDepth:0.5, signShape:"arch",
   glow:55, rotate:false, unit:"mm",
   RIB_ANGLES:[0,120,240]
@@ -480,19 +487,34 @@ function ribPts(){
       pts.push([rsOuter(lbot),lbot]);              // in to rib edge
       prev=lbot; continue;
     }
-    if(drop){                                      // drop-in snap-lock: a retaining tooth above each ring seat
-      const top=zr+slotW/2, bot=zr-slotW/2;
-      const lock=Math.min(0.9,Math.max(0.5,P.D*0.12));                                   // snap overhang (ply flexes past it on the way in)
-      const lockH=Math.min(1.8,Math.max(0.9,Math.min((P.pitch-slotW)-0.6, P.gap*0.4)));   // tooth height, capped to the ring gap
-      const ttop=top+lockH;
-      const n=Math.max(2,Math.round((prev-ttop)/4));
-      for(let i=1;i<=n;i++){ const zz=prev+(ttop-prev)*i/n; pts.push([rsOuter(zz),zz]); }
-      pts.push([rsOuter(ttop),ttop]);              // tooth base (cam ramp starts here)
-      pts.push([rsOuter(top)+lock,top]);           // snap lip projects out, overhangs the ring's top edge
-      pts.push([r_inner(zr),top]);                 // lip underside runs in to the seat floor
-      pts.push([r_inner(zr),bot]);                 // seat floor (ring seats here)
-      pts.push([rsOuter(bot),bot]);                // out to mouth bottom
-      prev=bot; continue;
+    if(drop){                                      // drop-in snap-lock: a retaining tooth at each ring seat
+      const top=zr+slotW/2, bot=zr-slotW/2, ri=r_inner(zr), rO=rsOuter(zr);
+      const lock=Math.max(0.25,Math.min(0.3+((P.snapGrip==null?55:P.snapGrip)/100)*0.8, P.D*0.18));  // snap overhang (Snap-grip slider)
+      const lockH=Math.min(1.8,Math.max(0.9,Math.min((P.pitch-slotW)-0.6, P.gap*0.4)));   // cam-ramp height
+      const tongueLen=Math.min(6, P.gap-1.2), tongueW=Math.max(1.8,Math.min(3,P.ribW*0.18)), kerf=Math.max(0.8,lock+0.4);
+      const sprung=!!P.snapSprung && (tongueLen>=2.8) && ((tongueW+kerf)<(P.ribW-3));  // sprung cantilever tooth; else rigid (also auto-falls back when ring gaps are too tight)
+      const bottomTooth=sprung && (zr < P.H/2);    // below the belly the ring is assembled from below, so the tooth faces down
+      const ttop=top+lockH, tgt=bottomTooth?top:ttop, n=Math.max(2,Math.round((prev-tgt)/4));
+      for(let i=1;i<=n;i++){ const zz=prev+(tgt-prev)*i/n; pts.push([rsOuter(zz),zz]); }
+      if(sprung && !bottomTooth){                  // sprung tooth on TOP — slit notch opens into the seat top
+        const rOt=rsOuter(top), rOr=rsOuter(top+tongueLen);
+        pts.push([rsOuter(ttop),ttop],[rOt+lock,top],
+                 [rOt-tongueW,top],[rOr-tongueW,top+tongueLen],            // tongue inboard face (tracks the slope)
+                 [rOr-tongueW-kerf,top+tongueLen],[rOt-tongueW-kerf,top],  // slit inner wall, back down to the seat
+                 [ri,top],[ri,bot],[rsOuter(bot),bot]);
+        prev=bot;
+      } else if(sprung && bottomTooth){            // sprung tooth on BOTTOM — slit notch opens into the seat bottom
+        const rOb=rsOuter(bot), rOr=rsOuter(bot-tongueLen);
+        pts.push([rsOuter(top),top],[ri,top],[ri,bot],
+                 [rOb-tongueW-kerf,bot],[rOr-tongueW-kerf,bot-tongueLen],  // slit inner wall, down
+                 [rOr-tongueW,bot-tongueLen],[rOb-tongueW,bot],            // tongue inboard face, back up
+                 [rOb+lock,bot],[rsOuter(bot-lockH),bot-lockH]);
+        prev=bot-lockH;
+      } else {                                     // rigid tooth on top (default, and tight-gap fallback)
+        pts.push([rsOuter(ttop),ttop],[rO+lock,top],[ri,top],[ri,bot],[rsOuter(bot),bot]);
+        prev=bot;
+      }
+      continue;
     }
     const top=zr+slotW/2+flare, bot=zr-slotW/2-flare, st=zr+slotW/2, sb=zr-slotW/2;
     const n=Math.max(2,Math.round((prev-top)/4));
@@ -1010,7 +1032,7 @@ function buildInstructions(){
     engrsign:"Cap + engraved sign panel"}[P.topMode]||P.topMode;
   const ASM={
     weave:{name:"Woven full rings",add:"Weave each ring onto the three ribs at its own height: line up its three slots with the ribs and ease it down level until it sits in all three seats."},
-    droplock:{name:"Drop-lock (snap-in full rings)",add:"Press each ring onto the three ribs at its seat until it clicks past the snap tooth. Tip the ring to hook two ribs first, then bring it flat onto the third and press."},
+    droplock:{name:"Drop-lock (snap-in full rings)"+(P.snapSprung?" \u2014 sprung tooth":""),add:"Press each ring onto the three ribs at its seat until it clicks past the snap tooth. Tip the ring to hook two ribs first, then bring it flat onto the third and press."+(P.snapSprung?" The tooth rides on a slit-sprung tongue, so it flexes aside and springs back \u2014 a lighter, cleaner click than a rigid tooth, with no need to flex the whole ring. Above the belly the tooth catches each ring's top edge; below the belly it catches the bottom, so seat the widest rings first and work outward toward both ends.":"")},
     split:{name:"Split rings (two half-rings each)",add:"Each ring is two half-rings. Set both halves around the ribs so their ends meet at the rib lines; the ribs and the end clamps hold them together."},
     open:{name:"Open-slot ribs (flared lead-in)",add:"The rib slots are flared so rings start on easily. Seat each ring at its height and push it home."},
     bayonet:{name:"Bayonet twist-lock",add:"Lower each ring over the rib lugs through the deep entry pockets, then twist it about "+P.bayTwist+"\u00B0 until it locks onto the shallow foot."}
@@ -1063,7 +1085,7 @@ function buildInstructions(){
   m+=S("Final check")+(baseLocked?"Re-tap the base wedges \u2014 they often loosen once the stack is compressed. ":"")+"Stand it up and power the puck.\n\n";
   m+="## Troubleshooting\n";
   m+="- **Ring too tight:** sand the slot cheeks on the ring, or loosen the joint-fit slider and re-cut that ring.\n";
-  m+=drop?"- **Snap too weak:** tighten the joint-fit slider and re-cut, add a sliver of veneer tape in the slot, or a dot of glue at one rib.\n":"- **Ring loose:** tighten the joint-fit slider and re-cut, or a dot of glue at one rib.\n";
+  m+=drop?"- **Snap too weak or too stiff:** use the *Snap grip* slider and re-cut \u2014 turn it up for a firmer click, down for an easier push-on. (Joint-fit tunes how tight the ring sits on the rib; sandpaper only eases a slot that came out physically too tight.)\n":"- **Ring loose:** tighten the joint-fit slider and re-cut, or a dot of glue at one rib.\n";
   if(baseKeys||topKeys) m+="- **Wedge won't stay:** tap firmer; if still proud, add a strip of tape to one face of the key.\n";
   m+="- **Light leaks low down:** that's the puck base; "+(baseLocked?"the base plate hides most of it. To hide more, turn off Lock base so the puck sits lower (you lose the no-glue base lock).":"add more rings or lower the puck lift.")+"\n";
   m+="\n*No glue is needed where wedges are used, so the lamp comes apart for re-lamping or finishing. Keep each wedge with its rib.*\n";
@@ -1087,6 +1109,7 @@ function syncLabels(){
   const tTag=Math.abs(P.T-3.18)<0.05?' · 1/8"':(Math.abs(P.T-6.35)<0.05?' · 1/4"':"");
   setVal("v_T",D(P.T,2,3),U+tTag);
   setVal("v_FIT",P.slotFit.toFixed(2),"mm");
+  setVal("v_SNAP",Math.round(P.snapGrip),"%"); sset("s_SNAP",P.snapGrip);
   setVal("v_G",Math.round(P.glow),"%");
   setVal("v_PD",D(P.puckD,1),U); setVal("v_PHt",D(P.puckH,1),U); setVal("v_LF",D(P.lift),U);
   const L=(v,d)=> IN ? (v/25.4).toFixed(2)+'"' : Math.round(v)+" mm";
@@ -1149,7 +1172,7 @@ const FIELDS={v_H:["H","s_H",true,[60,1200]],v_W:["dia","s_W",true,[80,1200]],v_
   v_N:["N","s_N",false,[4,200]],v_RW:["ringW","s_RW",true,[4,80]],v_T:["T","s_T",true,[1,12]],
   v_FIT:["slotFit","s_FIT",false,[-0.6,0.3]],
   v_PD:["puckD","s_PD",true,[20,300]],v_PHt:["puckH","s_PHt",true,[5,120]],v_LF:["lift","s_LF",true,[0,200]],
-  v_G:["glow","s_G",false,[0,100]]};
+  v_G:["glow","s_G",false,[0,100]], v_SNAP:["snapGrip","s_SNAP",false,[0,100]]};
 for(const id in FIELDS){
   const [key,sl,isDim,range]=FIELDS[id]; const el=document.getElementById(id); if(!el) continue;
   el.addEventListener("keydown",e=>{ if(e.key==="Enter") el.blur(); });
@@ -1174,13 +1197,17 @@ function bind(slider,key,after){ const el=document.getElementById(slider);
 bind("s_H","H",()=>{ if(PROFILES[P.profile]) P.dia=Math.min(240,Math.max(130,P.H/PROFILES[P.profile].hr)); rebuild(); });
 bind("s_W","dia");
 bind("s_TP","taper",()=>{ if(P.profile!=="custom"){ setProfile("custom"); } else { rebuild(); } });
-bind("s_N","N"); bind("s_RW","ringW"); bind("s_T","T"); bind("s_FIT","slotFit");
+bind("s_N","N"); bind("s_RW","ringW"); bind("s_T","T"); bind("s_FIT","slotFit"); bind("s_SNAP","snapGrip");
 const asmBtns=[...document.querySelectorAll("#seg_asm button")];
 function setAssembly(a){ P.assembly=a; asmBtns.forEach(b=>b.classList.toggle("on",b.dataset.asm===a)); rebuild(); }
 asmBtns.forEach(b=>b.addEventListener("click",()=>setAssembly(b.dataset.asm)));
 const lockBtns=[...document.querySelectorAll("#seg_lock button")];
 function paintLocks(){ lockBtns.forEach(b=>b.classList.toggle("on", b.dataset.lock==="top"?P.wedgeTop:P.wedgeBase)); }
 lockBtns.forEach(b=>b.addEventListener("click",()=>{ if(b.dataset.lock==="top")P.wedgeTop=!P.wedgeTop; else P.wedgeBase=!P.wedgeBase; paintLocks(); rebuild(); }));
+const sprungBtns=[...document.querySelectorAll("#seg_sprung button")];
+function paintSprung(){ sprungBtns.forEach(b=>b.classList.toggle("on", (b.dataset.spr==="1")===!!P.snapSprung)); }
+sprungBtns.forEach(b=>b.addEventListener("click",()=>{ P.snapSprung=(b.dataset.spr==="1"); paintSprung(); rebuild(); }));
+paintSprung();
 paintLocks();
 bind("s_PD","puckD",()=>{ if(P.ledModel!=="custom") setLed("custom"); else rebuild(); });
 bind("s_PHt","puckH",()=>{ if(P.ledModel!=="custom") setLed("custom"); else rebuild(); });
@@ -1223,7 +1250,7 @@ document.getElementById("ex_csv").addEventListener("click",()=>download(`barrel_
 document.getElementById("ex_txt").addEventListener("click",()=>download(`barrel_${P.N}rings_assembly.md`,buildInstructions(),"text/markdown"));
 
 /* ========================= PRESETS ========================= */
-const USER_KEYS=["H","dia","taper","profile","N","ringW","T","slotFit","numberRings","assembly","wedgeTop","wedgeBase","puckD","puckH","lift","ledModel","topMode","number","font","glow","rotate","unit"];
+const USER_KEYS=["H","dia","taper","profile","N","ringW","T","slotFit","numberRings","assembly","snapGrip","snapSprung","wedgeTop","wedgeBase","puckD","puckH","lift","ledModel","topMode","number","font","glow","rotate","unit"];
 const DEFAULTS=(()=>{const o={};for(const k of USER_KEYS)o[k]=P[k];return JSON.parse(JSON.stringify(o));})();
 const PKEY="cooperLampPresets";
 let slots=[null,null,null,null,null];
@@ -1248,7 +1275,7 @@ function applyPreset(o){
   unitBtns.forEach(b=>b.classList.toggle("on",b.dataset.u===(P.unit||"mm")));
   profBtns.forEach(b=>b.classList.toggle("on",b.dataset.prof===(P.profile||"custom")));
   asmBtns.forEach(b=>b.classList.toggle("on",b.dataset.asm===(P.assembly||"weave")));
-  paintLocks();
+  paintLocks(); paintSprung();
   ledBtns.forEach(b=>b.classList.toggle("on",b.dataset.led===(P.ledModel||"custom")));
   setTop(P.topMode);                                   // updates seg UI + rebuild
   syncLabels();
@@ -1262,7 +1289,7 @@ document.querySelectorAll("#loadRow button").forEach(b=>b.addEventListener("clic
 document.getElementById("resetBtn").addEventListener("click",()=>applyPreset(DEFAULTS));
 const MY_SETTINGS={ profile:"burgundy", taper:PROFILES.burgundy.taper, dia:163.86, H:199.9,
   ringW:27.94, N:18, T:3.18, ledModel:"ezvalo", puckD:PUCKS.ezvalo.d, puckH:PUCKS.ezvalo.h,
-  lift:11, topMode:"solid", assembly:"droplock", wedgeTop:true, wedgeBase:true, unit:"in" };
+  lift:11, topMode:"solid", assembly:"droplock", snapGrip:55, snapSprung:true, wedgeTop:true, wedgeBase:true, unit:"in" };
 document.getElementById("myBtn").addEventListener("click",()=>applyPreset(MY_SETTINGS));
 readSlots(); refreshSlotUI();
 
