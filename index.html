@@ -244,6 +244,7 @@ input[type=range]::-moz-range-thumb{ width:14px;height:14px;border-radius:50%; b
         <button id="ex_svg">Export cut file · SVG</button>
         <button class="ghost" id="ex_csv">Export ring schedule · CSV</button>
         <button class="ghost" id="ex_txt">Export assembly guide · MD</button>
+        <button class="ghost" id="ex_disk">Export diffuser disk · SVG</button>
       </div>
       <p class="note" id="exnote"></p>
     </div>
@@ -1099,6 +1100,12 @@ function buildSVG(){
   const W=rx0+3*pitch+40+keyW, Hg=Math.max(rows*cell,P.H+80);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W.toFixed(1)}mm" height="${Hg.toFixed(1)}mm" viewBox="0 0 ${W.toFixed(1)} ${Hg.toFixed(1)}">\n<rect width="${W.toFixed(1)}" height="${Hg.toFixed(1)}" fill="#fff"/>\n${parts.join("\n")}\n</svg>\n`;
 }
+function buildDiskSVG(){                         // the diffuser disk on its own small sheet
+  derive();
+  const R=diskRadii(), pad=8, rr=R.rOut, S=(2*rr+2*pad), c=pad+rr;
+  const parts=diskSVG(c,c);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${S.toFixed(1)}mm" height="${S.toFixed(1)}mm" viewBox="0 0 ${S.toFixed(1)} ${S.toFixed(1)}">\n<rect width="${S.toFixed(1)}" height="${S.toFixed(1)}" fill="#fff"/>\n${parts.join("\n")}\n</svg>\n`;
+}
 function buildCSV(){
   derive();
   let s=`Cooper barrel lamp — ring schedule\nHeight (mm),${P.H}\nMax diameter (mm),${P.dia.toFixed(1)}\nRing count,${P.N}\nRing width (mm),${P.ringW.toFixed(1)}\nMaterial thickness (mm),${P.T.toFixed(2)}\nJoint slot width (mm),${P.slotW.toFixed(2)}\nJoint fit offset (mm),${P.slotFit.toFixed(2)}\nRings numbered (engraved),${P.numberRings?"yes (#1 = bottom)":"no"}\nTop lock,${(P.topMode!=="none"&&P.wedgeTop)?"wedged through-tenon (3 keys, no glue)":"none"}\nBase lock,${P.wedgeBase?"base plate locked by 3 under-plate wedge keys (no glue)":"none"}\nAssembly method,${P.assembly}${P.assembly==="split"?" (2 half-rings each)":P.assembly==="open"?" (flared rib slots)":P.assembly==="droplock"?" (drop-in snap-lock rings + wedged caps)":P.assembly==="bayonet"?" (drop + twist-lock)":" (woven full rings)"}\nRing spacing centre-centre (mm),${P.pitch.toFixed(2)}\nRing gap (clear air) (mm),${P.gap.toFixed(2)}\nLED puck dia x h (mm),${P.puckD.toFixed(1)} x ${P.puckH.toFixed(1)}\nMount: lift / seat tip r / wall r (mm),${P.lift} / ${P.seatIn.toFixed(1)} / ${P.wallR.toFixed(1)}\nTop,${P.topMode}${(P.topMode==="sign"||P.topMode==="signsolid"||P.topMode==="engrsign")?" ("+P.number+")":""}\n\nRing #,Height z (mm),Outer dia (mm),Inner dia (mm)\n`;
@@ -1356,6 +1363,7 @@ tRot.addEventListener("click",()=>{ P.rotate=!P.rotate; tRot.classList.toggle("o
 document.getElementById("ex_svg").addEventListener("click",()=>download(`barrel_${P.N}rings_${Math.round(P.H)}h_${P.topMode}.svg`,buildSVG(),"image/svg+xml"));
 document.getElementById("ex_csv").addEventListener("click",()=>download(`barrel_${P.N}rings_${Math.round(P.H)}h.csv`,buildCSV(),"text/csv"));
 document.getElementById("ex_txt").addEventListener("click",()=>download(`barrel_${P.N}rings_assembly.md`,buildInstructions(),"text/markdown"));
+document.getElementById("ex_disk").addEventListener("click",()=>download(`barrel_diffuser_disk_${Math.round(P.diffOpen)}mm_${P.diffHex?"hex":"open"}${P.diffNotch?"_notched":""}.svg`,buildDiskSVG(),"image/svg+xml"));
 
 /* ========================= PRESETS ========================= */
 const USER_KEYS=["H","dia","taper","profile","N","ringW","T","slotFit","numberRings","assembly","snapGrip","snapSprung","diffuser","diffOpen","diffHex","diffNotch","hexCell","hexWall","diskIsolate","wedgeTop","wedgeBase","puckD","puckH","lift","ledModel","topMode","number","font","glow","rotate","unit"];
