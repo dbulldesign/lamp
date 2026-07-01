@@ -234,7 +234,7 @@ input[type=range]::-moz-range-thumb{ width:14px;height:14px;border-radius:50%; b
         <div class="seg five" id="loadRow">
           <button data-slot="0">1</button><button data-slot="1">2</button><button data-slot="2">3</button><button data-slot="3">4</button><button data-slot="4">5</button>
         </div></div>
-      <div class="export"><button class="ghost" id="myBtn">★ My barrel · Burgundy 7.87&Prime; · 18 rings · 1/8&Prime;</button></div>
+      <div class="export"><button class="ghost" id="myBtn">★ My barrel · Burgundy 7.87&Prime; · 12 rings · 1/8&Prime;</button></div>
       <div class="export"><button class="ghost" id="resetBtn">Restore defaults</button></div>
     </div>
 
@@ -245,6 +245,7 @@ input[type=range]::-moz-range-thumb{ width:14px;height:14px;border-radius:50%; b
         <button class="ghost" id="ex_csv">Export ring schedule · CSV</button>
         <button class="ghost" id="ex_txt">Export assembly guide · MD</button>
         <button class="ghost" id="ex_disk">Export diffuser disk · SVG</button>
+        <button class="ghost" id="ex_test">Export fit-test coupons · SVG</button>
       </div>
       <p class="note" id="exnote"></p>
     </div>
@@ -912,6 +913,21 @@ function ringLabelEng(cx,cy,z,label,ang){  // tiny engraved order # in the outer
   }
   return out;
 }
+function labelEng(cx,cy,str,h){    // engrave a short numeric label (digits, minus, plus, dot) centred at (cx,cy)
+  const DG=FONTS.classic.d, gap=0.16*h, out=[];
+  const wof=ch=> (ch>="0"&&ch<="9")?DG[ch].w*h : ch==="."?0.30*h : (ch==="-"||ch==="+")?0.62*h : 0.4*h;
+  let tot=0; for(const ch of str) tot+=wof(ch)+gap; tot-=gap;
+  let x=cx-tot/2;
+  for(const ch of str){
+    if(ch>="0"&&ch<="9"){ const g=DG[ch]; for(const ring of g.r) out.push(polyEng(ring.map(([px,py])=>[x+px*h, cy-(py-0.5)*h]))); }
+    else if(ch==="."){ const s=0.16*h, yb=cy+0.42*h; out.push(polyEng([[x,yb-s],[x+s,yb-s],[x+s,yb],[x,yb]])); }
+    else if(ch==="-"){ const w=0.5*h,t=0.13*h; out.push(polyEng([[x,cy-t/2],[x+w,cy-t/2],[x+w,cy+t/2],[x,cy+t/2]])); }
+    else if(ch==="+"){ const w=0.5*h,t=0.13*h; out.push(polyEng([[x,cy-t/2],[x+w,cy-t/2],[x+w,cy+t/2],[x,cy+t/2]]));
+      out.push(polyEng([[x+w/2-t/2,cy-w*0.5],[x+w/2+t/2,cy-w*0.5],[x+w/2+t/2,cy+w*0.5],[x+w/2-t/2,cy+w*0.5]])); }
+    x+=wof(ch)+gap;
+  }
+  return out;
+}
 function halfRingSVG(cx,cy,z,side){          // split-ring half with its share of rib notches
   const Ro=R_outer(z), ri=r_inner(z), gp=2*Math.PI/180;
   const a0=(side?Math.PI/2:-Math.PI/2)+gp, a1=(side?3*Math.PI/2:Math.PI/2)-gp;
@@ -1105,6 +1121,21 @@ function buildDiskSVG(){                         // the diffuser disk on its own
   const R=diskRadii(), pad=8, rr=R.rOut, S=(2*rr+2*pad), c=pad+rr;
   const parts=diskSVG(c,c);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${S.toFixed(1)}mm" height="${S.toFixed(1)}mm" viewBox="0 0 ${S.toFixed(1)} ${S.toFixed(1)}">\n<rect width="${S.toFixed(1)}" height="${S.toFixed(1)}" fill="#fff"/>\n${parts.join("\n")}\n</svg>\n`;
+}
+function buildTestSVG(){          // joint-fit calibration coupons at stepped slot offsets, using this barrel's stock T
+  derive();
+  const T=P.T, offs=[-0.20,-0.15,-0.10,-0.05,0.00,0.05,0.10];
+  const fmt=v=>(v>0?"+":v<0?"-":"")+Math.abs(v).toFixed(2);
+  const cw=20, gap=7, slotLen=15, mside=12, mtop=20, botLbl=10, n=offs.length;
+  const W=mside*2 + n*cw + (n-1)*gap, Hh=mtop+slotLen+botLbl+16;
+  const parts=[];
+  parts.push(poly([[6,10],[W-6,10],[W-6,Hh-6],[6,Hh-6]]));                 // strip outline
+  for(let i=0;i<n;i++){ const cx=mside+cw/2+i*(cw+gap), off=offs[i], sw=T+off;
+    const sx=cx-sw/2, sy=mtop;
+    parts.push(poly([[sx,sy],[sx+sw,sy],[sx+sw,sy+slotLen],[sx,sy+slotLen]]));  // test slot: width = T + offset
+    parts.push(...labelEng(cx, sy+slotLen+6.5, fmt(off), 3.2));               // engraved offset under the slot
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W.toFixed(1)}mm" height="${Hh.toFixed(1)}mm" viewBox="0 0 ${W.toFixed(1)} ${Hh.toFixed(1)}">\n<rect width="${W.toFixed(1)}" height="${Hh.toFixed(1)}" fill="#fff"/>\n${parts.join("\n")}\n</svg>\n`;
 }
 function buildCSV(){
   derive();
@@ -1364,6 +1395,7 @@ document.getElementById("ex_svg").addEventListener("click",()=>download(`barrel_
 document.getElementById("ex_csv").addEventListener("click",()=>download(`barrel_${P.N}rings_${Math.round(P.H)}h.csv`,buildCSV(),"text/csv"));
 document.getElementById("ex_txt").addEventListener("click",()=>download(`barrel_${P.N}rings_assembly.md`,buildInstructions(),"text/markdown"));
 document.getElementById("ex_disk").addEventListener("click",()=>download(`barrel_diffuser_disk_${Math.round(P.diffOpen)}mm_${P.diffHex?"hex":"open"}${P.diffNotch?"_notched":""}.svg`,buildDiskSVG(),"image/svg+xml"));
+document.getElementById("ex_test").addEventListener("click",()=>download(`barrel_fit_test_T${P.T.toFixed(2)}.svg`,buildTestSVG(),"image/svg+xml"));
 
 /* ========================= PRESETS ========================= */
 const USER_KEYS=["H","dia","taper","profile","N","ringW","T","slotFit","numberRings","assembly","snapGrip","snapSprung","diffuser","diffOpen","diffHex","diffNotch","hexCell","hexWall","diskIsolate","wedgeTop","wedgeBase","puckD","puckH","lift","ledModel","topMode","number","font","glow","rotate","unit"];
@@ -1404,7 +1436,7 @@ document.querySelectorAll("#loadRow button").forEach(b=>b.addEventListener("clic
 }));
 document.getElementById("resetBtn").addEventListener("click",()=>applyPreset(DEFAULTS));
 const MY_SETTINGS={ profile:"burgundy", taper:PROFILES.burgundy.taper, dia:163.86, H:199.9,
-  ringW:27.94, N:18, T:3.18, ledModel:"ezvalo", puckD:PUCKS.ezvalo.d, puckH:PUCKS.ezvalo.h,
+  ringW:27.94, N:12, T:3.18, ledModel:"ezvalo", puckD:PUCKS.ezvalo.d, puckH:PUCKS.ezvalo.h,
   lift:11, topMode:"solid", assembly:"droplock", snapGrip:55, snapSprung:true, wedgeTop:true, wedgeBase:true, unit:"in" };
 document.getElementById("myBtn").addEventListener("click",()=>applyPreset(MY_SETTINGS));
 readSlots(); refreshSlotUI();
@@ -1427,6 +1459,7 @@ function resizeRAF(){ if(_rzPending) return; _rzPending=true;
 new ResizeObserver(resizeRAF).observe(canvas);
 // suppress the harmless "ResizeObserver loop ..." notification so it never shows as an error
 if(window.addEventListener) window.addEventListener("error",e=>{ if(e.message && e.message.indexOf("ResizeObserver loop")>=0){ e.stopImmediatePropagation(); e.preventDefault(); } });
+applyPreset(MY_SETTINGS);   // open on the Burgundy 12-ring barrel by default
 setTop(P.topMode); setFont(P.font); setStyle(P.signStyle); setShape(P.signShape); setLed(P.ledModel); setProfile(P.profile); setAssembly(P.assembly); syncLabels(); resize(); rebuild(); updateCam(); loop();
 </script>
 </body>
