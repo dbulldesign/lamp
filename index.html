@@ -163,6 +163,9 @@ input[type=range]::-moz-range-thumb{ width:14px;height:14px;border-radius:50%; b
         <input type="range" id="s_HCELL" min="3" max="12" step="0.5"></div>
       <div class="ctrl"><div class="row"><label>Hex wall</label><span class="vwrap"><input class="vin" id="v_HWALL" type="text" inputmode="decimal"><span class="vu" id="u_v_HWALL"></span></span></div>
         <input type="range" id="s_HWALL" min="0.6" max="2.5" step="0.1"></div>
+      <div class="ctrl"><div class="row"><label>Light-test view</label></div>
+        <div class="seg" id="seg_diffiso"><button data-di="0">In lamp</button><button data-di="1">Isolated</button></div></div>
+      <div class="ctrl"><div id="diffreadout" style="color:#9c8d79;font-size:11.5px;padding:3px 2px 0;line-height:1.35"></div></div>
     </div>
 
     <div class="group">
@@ -283,7 +286,7 @@ const P = {
   N:22, ringW:14, T:3.18,            // rings + material
   D:6, ribW:18, apertureR:40, zShroud:70, zBot:8,
   puckD:70, puckH:24, lift:15, ledModel:"custom",                 // LED puck dimensions + lift off table
-  ribTabW:14, slotFit:-0.1, numberRings:true, assembly:"weave", snapGrip:55, snapSprung:false, diffuser:false, diffOpen:60, diffHex:false, diffNotch:true, hexCell:5.2, hexWall:1.1, bayTwist:16, bayLugD:3, wedgeTop:true, wedgeBase:true,
+  ribTabW:14, slotFit:-0.1, numberRings:true, assembly:"weave", snapGrip:55, snapSprung:false, diffuser:false, diffOpen:60, diffHex:false, diffNotch:true, hexCell:5.2, hexWall:1.1, diskIsolate:false, bayTwist:16, bayLugD:3, wedgeTop:true, wedgeBase:true,
   topMode:"sign", number:"18", font:"classic", signStyle:"classic", engravingDepth:0.5, signShape:"arch",
   glow:55, rotate:false, unit:"mm",
   RIB_ANGLES:[0,120,240]
@@ -421,8 +424,8 @@ function ringMesh(z){
   const g=new THREE.ExtrudeGeometry(sh,{depth:P.T,bevelEnabled:false,curveSegments:96});
   g.rotateX(-Math.PI/2); g.translate(0,z-P.T/2,0);
   const m=woodMat.clone(); const f=ringEmissiveF(z);
-  m.emissive=new THREE.Color(0xff7a22); m.emissiveIntensity=GG()*0.45*f;
-  const mesh=new THREE.Mesh(g,m); mesh.userData.ei=0.45*f;
+  m.emissive=new THREE.Color(0xff7a22); m.emissiveIntensity=GG()*0.45*f*diskDim(z);
+  const mesh=new THREE.Mesh(g,m); mesh.userData.ei=0.45*f*diskDim(z);
   mesh.castShadow=true; mesh.receiveShadow=true; return mesh;
 }
 function halfRingMesh(z,side){                         // split-ring: half annulus with a seam gap
@@ -436,8 +439,8 @@ function halfRingMesh(z,side){                         // split-ring: half annul
   const g=new THREE.ExtrudeGeometry(sh,{depth:P.T,bevelEnabled:false,curveSegments:1});
   g.rotateX(-Math.PI/2); g.translate(0,z-P.T/2,0);
   const m=woodMat.clone(); const f=ringEmissiveF(z);
-  m.emissive=new THREE.Color(0xff7a22); m.emissiveIntensity=GG()*0.45*f;
-  const mesh=new THREE.Mesh(g,m); mesh.userData.ei=0.45*f;
+  m.emissive=new THREE.Color(0xff7a22); m.emissiveIntensity=GG()*0.45*f*diskDim(z);
+  const mesh=new THREE.Mesh(g,m); mesh.userData.ei=0.45*f*diskDim(z);
   mesh.castShadow=true; mesh.receiveShadow=true; return mesh;
 }
 function topLock(){ const capTop=P.headZ+P.T, kw=Math.max(6,P.ribTabW-4), khz=P.T+0.10;
@@ -829,16 +832,24 @@ function diskMesh(){
   const m=woodMat.clone(); m.castShadow=true; m.receiveShadow=true;
   const mesh=new THREE.Mesh(g,m); mesh.castShadow=true; return mesh;
 }
+let DTAU=1, DZ=0;
+function diskTransmission(){ if(!P.diffuser) return 1; const R=diskRadii(), pr=P.puckD/2; let t=Math.min(1,(R.openR*R.openR)/(pr*pr)); if(P.diffHex){ const f=Math.max(2.5,P.hexCell), w=Math.max(0.6,P.hexWall); t*=(f/(f+w))*(f/(f+w)); } return t; }
+function upDim(){ return P.diffuser ? (0.2+0.8*DTAU) : 1; }        // upward-throw factor from the disk (estimate)
+function diskDim(z){ return (P.diffuser && z>DZ) ? (0.2+0.8*DTAU) : 1; } // rings above the disk get the reduced light
 function rebuild(){
   derive();
+  DTAU=diskTransmission(); DZ=P.lift+P.puckH;
+  { const el=document.getElementById("diffreadout"); if(el) el.textContent = P.diffuser ? ("Est. light reaching the upper lamp \u2248 "+Math.round(DTAU*100)+"% of the bare puck"+(P.diffHex?", hex-diffused":"")) : ""; }
   for(let i=lamp.children.length-1;i>=0;i--){ const o=lamp.children[i]; lamp.remove(o); if(o.geometry)o.geometry.dispose(); }
-  if(P.assembly==="split"){ for(const z of P.Z){ lamp.add(halfRingMesh(z,0)); lamp.add(halfRingMesh(z,1)); } }
-  else { for(const z of P.Z) lamp.add(ringMesh(z)); }
-  for(const a of P.RIB_ANGLES) lamp.add(ribMesh(a));
-  if(P.topMode!=="none" && P.wedgeTop){ const L=topLock(); for(const a of P.RIB_ANGLES) lamp.add(keyMesh(a, L.capTop+L.khz/2+0.2, P.midR, L.kw)); }
-  if(P.wedgeBase){ lamp.add(basePlateMesh()); const B=baseLock();
-    for(const a of P.RIB_ANGLES) lamp.add(keyMesh(a, B.keyZc, B.tabMid, B.kw)); }
-  for(const m of topMeshes()) lamp.add(m);
+  if(!P.diskIsolate){                                       // full lamp; isolated view hides everything but the puck + disk
+    if(P.assembly==="split"){ for(const z of P.Z){ lamp.add(halfRingMesh(z,0)); lamp.add(halfRingMesh(z,1)); } }
+    else { for(const z of P.Z) lamp.add(ringMesh(z)); }
+    for(const a of P.RIB_ANGLES) lamp.add(ribMesh(a));
+    if(P.topMode!=="none" && P.wedgeTop){ const L=topLock(); for(const a of P.RIB_ANGLES) lamp.add(keyMesh(a, L.capTop+L.khz/2+0.2, P.midR, L.kw)); }
+    if(P.wedgeBase){ lamp.add(basePlateMesh()); const B=baseLock();
+      for(const a of P.RIB_ANGLES) lamp.add(keyMesh(a, B.keyZc, B.tabMid, B.kw)); }
+    for(const m of topMeshes()) lamp.add(m);
+  }
   const pg=new THREE.CylinderGeometry(P.puckD/2-0.8,P.puckD/2-0.8,P.puckH,48);
   pg.translate(0,P.lift+P.puckH/2,0);
   puckMesh=new THREE.Mesh(pg,[puckSideMat,puckMat,puckBotMat]);   // side / top lens / dark bottom
@@ -846,12 +857,12 @@ function rebuild(){
   if(P.diffuser) lamp.add(diskMesh());
   const ph=P.lift+P.puckH;                       // lens height (top of puck)
   beam.position.set(0,ph+1,0); beamTarget.position.set(0,P.H*1.2,0);
-  beam.intensity=GG()*2.6; beam.distance=P.H*2.6;
+  beam.intensity=GG()*2.6*upDim(); beam.distance=P.H*2.6;
   spill.position.set(0,P.lift+P.puckH+0.5,0); spill.intensity=GG()*0.9;
   topLight.decay=2; topLight.distance=P.PH?P.PH*3:300; if(P.topMode!=="sign") topLight.intensity=0;
   puckMat.emissiveIntensity=GG()*3.2;               // the lens itself is the brightest thing
   if(bloom){ bloom.strength=0.45+GG()*0.35; bloom.threshold=0.62; }
-  target.set(0,P.H*0.5,0);
+  target.set(0, P.diskIsolate ? (P.lift+P.puckH+6) : P.H*0.5, 0);
   document.getElementById("r_n").textContent=P.N;
   { const g=document.getElementById("r_gap"), u=document.getElementById("u_r_gap");
     if(g){ if(P.unit==="in"){ g.textContent=(P.gap/25.4).toFixed(3); u.textContent=" \u2033"; }
@@ -1299,13 +1310,18 @@ diffHexBtns.forEach(b=>b.addEventListener("click",()=>{ P.diffHex=(b.dataset.dh=
 const diffNotchBtns=[...document.querySelectorAll("#seg_diffnotch button")];
 function paintDiffNotch(){ diffNotchBtns.forEach(b=>b.classList.toggle("on",(b.dataset.dn==="1")===!!P.diffNotch)); }
 diffNotchBtns.forEach(b=>b.addEventListener("click",()=>{ P.diffNotch=(b.dataset.dn==="1"); paintDiffNotch(); rebuild(); }));
-paintDiff(); paintDiffHex(); paintDiffNotch();
+const diffIsoBtns=[...document.querySelectorAll("#seg_diffiso button")];
+function paintDiffIso(){ diffIsoBtns.forEach(b=>b.classList.toggle("on",(b.dataset.di==="1")===!!P.diskIsolate)); }
+diffIsoBtns.forEach(b=>b.addEventListener("click",()=>{ P.diskIsolate=(b.dataset.di==="1");
+  if(P.diskIsolate){ dist=Math.max(150,P.puckD*2.6); pol=1.2; } else { dist=560; pol=1.15; }
+  paintDiffIso(); rebuild(); }));
+paintDiff(); paintDiffHex(); paintDiffNotch(); paintDiffIso();
 paintLocks();
 bind("s_PD","puckD",()=>{ if(P.ledModel!=="custom") setLed("custom"); else rebuild(); });
 bind("s_PHt","puckH",()=>{ if(P.ledModel!=="custom") setLed("custom"); else rebuild(); });
 bind("s_LF","lift");
 bind("s_G","glow",()=>{
-  beam.intensity=GG()*2.6; spill.intensity=GG()*0.9;
+  beam.intensity=GG()*2.6*upDim(); spill.intensity=GG()*0.9;
   const reach=Math.exp(-P.H/420);
   if(signGlowMat) signGlowMat.opacity=Math.min(1,GG()*0.9*reach);
   topLight.intensity=(P.topMode==="sign")?GG()*0.5*reach:0;
@@ -1342,7 +1358,7 @@ document.getElementById("ex_csv").addEventListener("click",()=>download(`barrel_
 document.getElementById("ex_txt").addEventListener("click",()=>download(`barrel_${P.N}rings_assembly.md`,buildInstructions(),"text/markdown"));
 
 /* ========================= PRESETS ========================= */
-const USER_KEYS=["H","dia","taper","profile","N","ringW","T","slotFit","numberRings","assembly","snapGrip","snapSprung","diffuser","diffOpen","diffHex","diffNotch","hexCell","hexWall","wedgeTop","wedgeBase","puckD","puckH","lift","ledModel","topMode","number","font","glow","rotate","unit"];
+const USER_KEYS=["H","dia","taper","profile","N","ringW","T","slotFit","numberRings","assembly","snapGrip","snapSprung","diffuser","diffOpen","diffHex","diffNotch","hexCell","hexWall","diskIsolate","wedgeTop","wedgeBase","puckD","puckH","lift","ledModel","topMode","number","font","glow","rotate","unit"];
 const DEFAULTS=(()=>{const o={};for(const k of USER_KEYS)o[k]=P[k];return JSON.parse(JSON.stringify(o));})();
 const PKEY="cooperLampPresets";
 let slots=[null,null,null,null,null];
@@ -1367,7 +1383,7 @@ function applyPreset(o){
   unitBtns.forEach(b=>b.classList.toggle("on",b.dataset.u===(P.unit||"mm")));
   profBtns.forEach(b=>b.classList.toggle("on",b.dataset.prof===(P.profile||"custom")));
   asmBtns.forEach(b=>b.classList.toggle("on",b.dataset.asm===(P.assembly||"weave")));
-  paintLocks(); paintSprung(); paintDiff(); paintDiffHex(); paintDiffNotch();
+  paintLocks(); paintSprung(); paintDiff(); paintDiffHex(); paintDiffNotch(); paintDiffIso();
   ledBtns.forEach(b=>b.classList.toggle("on",b.dataset.led===(P.ledModel||"custom")));
   setTop(P.topMode);                                   // updates seg UI + rebuild
   syncLabels();
